@@ -115,5 +115,19 @@ module Amenomi
         exit 1
       end
     end
+
+    desc 'restart INSTANCE_ID', 'stop & start EC2 instance.'
+    def restart(instance_id)
+      begin
+        authenticate
+        ec2_client = Aws::EC2::Client.new
+        change_state(ec2_client, :stop, instance_id)
+        change_state(ec2_client, :start, instance_id)
+      rescue => e
+        $stderr.puts("[ERROR] #{e.message}")
+        exit 1
+      end
+    end
+
   end
 end
