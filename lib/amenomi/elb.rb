@@ -35,8 +35,44 @@ module Amenomi
     def list
       begin
         authenticate
-        instances = list_instances
-        output_instances(instances)
+        elb = elb_client
+        elbv2 = elbv2_client
+        case options[:type]
+        when 'clb'
+          lb_tables = []
+          resp = elb.describe_load_balancers
+          resp.load_balancer_descriptions.each do |lb|
+            row = []
+            row << lb.load_balancer_name
+            row << lb.dns_name
+            row << lb.scheme
+            listeners = ""
+            backends = ""
+            lb.listener_descriptions.each do |list|
+              listeners += "#{list.listener.protocol}(#{list.listener.load_balancer_port})\n"
+              backends += "#{list.listener.instance_protocol}(#{list.listener.instance_port})\n"
+            end
+            row << listeners
+            row << backends
+            instances = ""
+            lb.instances.each do |instance|
+              instances += "#{instance.instance_id}\n"
+            end
+            row << instances
+            lb_tables << row
+            lb_tables << :separator
+          end
+          lb_tables.pop
+          tables = Terminal::Table.new :headings => ['Name', 'DNS name', 'Scheme', 'Listeners', 'Backends', 'Instances'], :rows => lb_tables
+          puts tables
+        when 'nlb'
+          p elbv2
+        when 'alb'
+          p elbv2
+        when 'all'
+          p elb
+          p elbv2
+        end
       rescue => e
         $stderr.puts("[ERROR] #{e.message}")
         exit 1
