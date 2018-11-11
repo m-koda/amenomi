@@ -5,8 +5,8 @@ require 'terminal-table'
 
 module Amenomi
   class ELB < Thor
-    CLB_HEADINGS = ['Name', 'DNS name', 'Scheme', 'Listeners', 'Backends', 'Instances']
-    ALB_HEADINGS = ['Name', 'DNS name', 'Scheme', 'Listeners']
+    CLB_HEADINGS      = ['Name', 'DNS name', 'Scheme', 'Listeners', 'Backends', 'Instances']
+    ALB_NLB_HEADINGS  = ['Name', 'DNS name', 'Scheme', 'Listeners']
 
     class_option :profile, :aliases => '-p', :default => "default", :desc => "specify profile name. If you don't specify profile name, use default profile."
     class_option :region, :aliases => '-r', :default => "ap-northeast-1", :desc => "specify region. If you don't specify region, use 'ap-northeast-1'."
@@ -80,13 +80,14 @@ module Amenomi
         lb_tables
       end
 
-      def get_application_lbs
+      def get_application_network_lbs(type)
         elbv2 = elbv2_client
         elbv2_opts = {}
         lb_tables = []
         loop do
           resp = elbv2.describe_load_balancers(elbv2_opts)
           resp.load_balancers.each do |lb|
+            next unless lb.type == type
             row = []
             row << lb.load_balancer_name
             row << lb.dns_name
@@ -120,10 +121,11 @@ module Amenomi
           lb_tables = get_classic_lbs
           display_table(lb_tables, CLB_HEADINGS)
         when 'nlb'
-          p elbv2
+          lb_tables = get_application_network_lbs("network")
+          display_table(lb_tables, ALB_NLB_HEADINGS)
         when 'alb'
-          lb_tables = get_application_lbs
-          display_table(lb_tables, ALB_HEADINGS)
+          lb_tables = get_application_network_lbs("application")
+          display_table(lb_tables, ALB_NLB_HEADINGS)
         when 'all'
           p elb
           p elbv2
