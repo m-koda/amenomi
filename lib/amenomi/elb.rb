@@ -5,6 +5,9 @@ require 'terminal-table'
 
 module Amenomi
   class ELB < Thor
+    CLB_HEADINGS = ['Name', 'DNS name', 'Scheme', 'Listeners', 'Backends', 'Instances']
+    ALB_HEADINGS = ['Name', 'DNS name', 'Scheme', 'Listeners']
+
     class_option :profile, :aliases => '-p', :default => "default", :desc => "specify profile name. If you don't specify profile name, use default profile."
     class_option :region, :aliases => '-r', :default => "ap-northeast-1", :desc => "specify region. If you don't specify region, use 'ap-northeast-1'."
 
@@ -28,6 +31,83 @@ module Amenomi
         end
         Aws.config.update(aws_opts)
       end
+
+      def get_listeners(elbv2_client, lb_arn)
+        listener_opts = {load_balancer_arn: "#{lb_arn}"}
+        listeners = ""
+        loop do
+          listener_resp = elbv2_client.describe_listeners(listener_opts)
+          listener_resp.listeners.each do |listener|
+            listeners += "#{listener.protocol}(#{listener.port})\n"
+          end
+          break if listener_resp.next_marker.nil?
+          listener_opts[:marker] = listener_resp.next_marker
+        end
+        listeners
+      end
+
+      def get_classic_lbs
+        elb = elb_client
+        elb_opts = {}
+        lb_tables = []
+        loop do
+          resp = elb.describe_load_balancers(elb_opts)
+          resp.load_balancer_descriptions.each do |lb|
+            row = []
+            row << lb.load_balancer_name
+            row << lb.dns_name
+            row << lb.scheme
+            listeners = ""
+            backends = ""
+            lb.listener_descriptions.each do |list|
+              listeners += "#{list.listener.protocol}(#{list.listener.load_balancer_port})\n"
+              backends += "#{list.listener.instance_protocol}(#{list.listener.instance_port})\n"
+            end
+            row << listeners
+            row << backends
+            instances = ""
+            lb.instances.each do |instance|
+              instances += "#{instance.instance_id}\n"
+            end
+            row << instances
+            lb_tables << row
+            lb_tables << :separator
+          end
+          break if resp.next_marker.nil?
+          elb_opts[:marker] = resp.next_marker
+        end
+        lb_tables.pop
+        lb_tables
+      end
+
+      def get_application_lbs
+        elbv2 = elbv2_client
+        elbv2_opts = {}
+        lb_tables = []
+        loop do
+          resp = elbv2.describe_load_balancers(elbv2_opts)
+          resp.load_balancers.each do |lb|
+            row = []
+            row << lb.load_balancer_name
+            row << lb.dns_name
+            row << lb.scheme
+            lb_arn = lb.load_balancer_arn
+            listeners = get_listeners(elbv2, lb_arn)
+            row << listeners
+            lb_tables << row
+            lb_tables << :separator
+          end
+          break if resp.next_marker.nil?
+          elbv2_opts[:marker] = resp.next_marker
+        end
+        lb_tables.pop
+        lb_tables
+      end
+
+      def display_table(tables_array, headings)
+        tables = Terminal::Table.new :headings => headings, :rows => tables_array
+        puts tables
+      end
     end
 
     desc 'list', 'list ELBs(CLB/NLB/ALB)'
@@ -35,73 +115,15 @@ module Amenomi
     def list
       begin
         authenticate
-        elb = elb_client
-        elbv2 = elbv2_client
-        elb_opts = {}
         case options[:type]
         when 'clb'
-          lb_tables = []
-          loop do
-            resp = elb.describe_load_balancers(elb_opts)
-            resp.load_balancer_descriptions.each do |lb|
-              row = []
-              row << lb.load_balancer_name
-              row << lb.dns_name
-              row << lb.scheme
-              listeners = ""
-              backends = ""
-              lb.listener_descriptions.each do |list|
-                listeners += "#{list.listener.protocol}(#{list.listener.load_balancer_port})\n"
-                backends += "#{list.listener.instance_protocol}(#{list.listener.instance_port})\n"
-              end
-              row << listeners
-              row << backends
-              instances = ""
-              lb.instances.each do |instance|
-                instances += "#{instance.instance_id}\n"
-              end
-              row << instances
-              lb_tables << row
-              lb_tables << :separator
-            end
-            break if resp.next_marker.nil?
-            elb_opts[:marker] = resp.next_marker
-          end
-          lb_tables.pop
-          tables = Terminal::Table.new :headings => ['Name', 'DNS name', 'Scheme', 'Listeners', 'Backends', 'Instances'], :rows => lb_tables
-          puts tables
+          lb_tables = get_classic_lbs
+          display_table(lb_tables, CLB_HEADINGS)
         when 'nlb'
           p elbv2
         when 'alb'
-          lb_tables = []
-          loop do
-            resp = elbv2.describe_load_balancers(elb_opts)
-            resp.load_balancers.each do |lb|
-              row = []
-              row << lb.load_balancer_name
-              row << lb.dns_name
-              row << lb.scheme
-              lb_arn = lb.load_balancer_arn
-              listener_opts = {load_balancer_arn: "#{lb_arn}"}
-              listeners = ""
-              loop do
-                listener_resp = elbv2.describe_listeners(listener_opts)
-                listener_resp.listeners.each do |listener|
-                  listeners += "#{listener.protocol}(#{listener.port})\n"
-                end
-                break if listener_resp.next_marker.nil?
-                listener_opts[:marker] = listener_resp.next_marker
-              end
-              row << listeners
-              lb_tables << row
-              lb_tables << :separator
-            end
-            break if resp.next_marker.nil?
-            elb_opts[:marker] = resp.next_marker
-          end
-          lb_tables.pop
-          tables = Terminal::Table.new :headings => ['Name', 'DNS name', 'Scheme', 'Listeners'], :rows => lb_tables
-          puts tables
+          lb_tables = get_application_lbs
+          display_table(lb_tables, ALB_HEADINGS)
         when 'all'
           p elb
           p elbv2
