@@ -74,30 +74,33 @@ module Amenomi
           p elbv2
         when 'alb'
           lb_tables = []
-          resp = elbv2.describe_load_balancers
-          resp.load_balancers.each do |lb|
-            row = []
-            row << lb.load_balancer_name
-            row << lb.dns_name
-            row << lb.scheme
-            #listeners = ""
-            #backends = ""
-            #lb.listener_descriptions.each do |list|
-            #  listeners += "#{list.listener.protocol}(#{list.listener.load_balancer_port})\n"
-            #  backends += "#{list.listener.instance_protocol}(#{list.listener.instance_port})\n"
-            #end
-            #row << listeners
-            #row << backends
-            #instances = ""
-            #lb.instances.each do |instance|
-            #  instances += "#{instance.instance_id}\n"
-            #end
-            #row << instances
-            lb_tables << row
-            lb_tables << :separator
+          loop do
+            resp = elbv2.describe_load_balancers(elb_opts)
+            resp.load_balancers.each do |lb|
+              row = []
+              row << lb.load_balancer_name
+              row << lb.dns_name
+              row << lb.scheme
+              lb_arn = lb.load_balancer_arn
+              listener_opts = {load_balancer_arn: "#{lb_arn}"}
+              listeners = ""
+              loop do
+                listener_resp = elbv2.describe_listeners(listener_opts)
+                listener_resp.listeners.each do |listener|
+                  listeners += "#{listener.protocol}(#{listener.port})\n"
+                end
+                break if listener_resp.next_marker.nil?
+                listener_opts[:marker] = listener_resp.next_marker
+              end
+              row << listeners
+              lb_tables << row
+              lb_tables << :separator
+            end
+            break if resp.next_marker.nil?
+            elb_opts[:marker] = resp.next_marker
           end
           lb_tables.pop
-          tables = Terminal::Table.new :headings => ['Name', 'DNS name', 'Scheme'], :rows => lb_tables
+          tables = Terminal::Table.new :headings => ['Name', 'DNS name', 'Scheme', 'Listeners'], :rows => lb_tables
           puts tables
         when 'all'
           p elb
