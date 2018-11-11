@@ -127,8 +127,24 @@ module Amenomi
           lb_tables = get_application_network_lbs("application")
           display_table(lb_tables, ALB_NLB_HEADINGS)
         when 'all'
-          p elb
-          p elbv2
+          lb_tables = []
+          classic_lbs = get_classic_lbs
+          unless classic_lbs.empty?
+            lb_tables += classic_lbs
+            lb_tables << :separator
+          end
+          application_lbs = get_application_network_lbs("application")
+          unless application_lbs.empty?
+            lb_tables += application_lbs
+            lb_tables << :separator
+          end
+          network_lbs = get_application_network_lbs("network")
+          unless network_lbs.empty?
+            lb_tables += network_lbs
+            lb_tables << :separator
+          end
+          lb_tables.pop
+          display_table(lb_tables, CLB_HEADINGS)
         end
       rescue => e
         $stderr.puts("[ERROR] #{e.message}")
