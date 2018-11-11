@@ -26,6 +26,10 @@ module Amenomi
     class_option :region, :aliases => '-r', :default => "ap-northeast-1", :desc => "specify region. If you don't specify region, use 'ap-northeast-1'."
 
     no_commands do
+      def ec2_client
+        Aws::EC2::Client.new
+      end
+
       def authenticate
         aws_opts = {}
         aws_opts[:region] = options[:region]
@@ -51,29 +55,8 @@ module Amenomi
     def list
       begin
         authenticate
-        ec2_client = Aws::EC2::Client.new
-        ec2_opts = {}
-        ec2_opts[:filters] = [{name: "instance-state-name", values: ["#{options[:state]}"]}] if options[:state]
-        resp = ec2_client.describe_instances(ec2_opts)
-        rows = []
-        resp.reservations.each do |reserv|
-          reserv.instances.each_with_index do |instance, index|
-            row = []
-            instance.tags.each do |tag|
-              row << tag.value if tag.key == 'Name'
-            end
-            row << instance.instance_id
-            row << instance.instance_type
-            row << instance.state.name
-            instance.private_ip_address.nil? ? row.push("-") : row.push(instance.private_ip_address)
-            instance.public_ip_address.nil? ? row.push("-") : row.push(instance.public_ip_address)
-            rows << row
-            rows << :separator
-          end
-        end
-        rows.pop
-        table = Terminal::Table.new :headings => ['Name', 'Instance ID', 'Instance type', 'State', 'Private IP', 'Public IP'], :rows => rows
-        puts table
+        instances = list_instances
+        output_instances(instances)
       rescue => e
         $stderr.puts("[ERROR] #{e.message}")
         exit 1
@@ -84,8 +67,8 @@ module Amenomi
     def stop(instance_id)
       begin
         authenticate
-        ec2_client = Aws::EC2::Client.new
         change_state(ec2_client, :stop, instance_id)
+        list_instances(instance_id)
       rescue => e
         $stderr.puts("[ERROR] #{e.message}")
         exit 1
@@ -96,7 +79,6 @@ module Amenomi
     def start(instance_id)
       begin
         authenticate
-        ec2_client = Aws::EC2::Client.new
         change_state(ec2_client, :start, instance_id)
       rescue => e
         $stderr.puts("[ERROR] #{e.message}")
@@ -108,7 +90,6 @@ module Amenomi
     def terminate(instance_id)
       begin
         authenticate
-        ec2_client = Aws::EC2::Client.new
         change_state(ec2_client, :terminate, instance_id)
       rescue => e
         $stderr.puts("[ERROR] #{e.message}")
@@ -120,13 +101,49 @@ module Amenomi
     def restart(instance_id)
       begin
         authenticate
-        ec2_client = Aws::EC2::Client.new
         change_state(ec2_client, :stop, instance_id)
         change_state(ec2_client, :start, instance_id)
       rescue => e
         $stderr.puts("[ERROR] #{e.message}")
         exit 1
       end
+    end
+
+    private
+
+    def output_instances(instances)
+      table = Terminal::Table.new :headings => ['Name', 'Instance ID', 'Instance type', 'State', 'Private IP', 'Public IP'], :rows => instances
+      puts table
+    end
+    
+    def list_instances(instance_id = nil)
+      ec2_opts = {}
+      ec2_opts[:instance_ids] = [instance_id] unless instance_id.nil?
+      ec2_opts[:filters] = [{name: "instance-state-name", values: ["#{options[:state]}"]}] if options[:state]
+      instances = []
+      loop do
+        resp = ec2_client.describe_instances(ec2_opts)
+        resp.reservations.each do |reserv|
+          reserv.instances.each_with_index do |instance, index|
+            row = []
+            row <<  'N/A' if instance.tags.map(&:to_h).all? { |h| h[:key] != 'Name' }
+            instance.tags.each do |tag|
+              row << tag.value if tag.key == 'Name'
+            end
+            row << instance.instance_id
+            row << instance.instance_type
+            row << instance.state.name
+            instance.private_ip_address.nil? ? row.push("-") : row.push(instance.private_ip_address)
+            instance.public_ip_address.nil? ? row.push("-") : row.push(instance.public_ip_address)
+            instances << row
+            instances << :separator
+          end
+        end
+        instances.pop
+        break if resp.next_token.nil?
+        ec2_opts[:next_token] = resp.next_token
+      end
+      instances
     end
 
   end
