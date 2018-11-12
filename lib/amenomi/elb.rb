@@ -5,11 +5,10 @@ require 'terminal-table'
 
 module Amenomi
   class ELB < Thor
-    CLB_HEADINGS      = ['Name', 'DNS name', 'Scheme', 'Listeners', 'Backends', 'Instances']
-    ALB_NLB_HEADINGS  = ['Name', 'DNS name', 'Scheme', 'Listeners']
+    TABLE_HEADINGS = ['Name', 'DNS name', 'Scheme', 'Listeners']
 
-    class_option :profile, :aliases => '-p', :default => "default", :desc => "specify profile name. If you don't specify profile name, use default profile."
-    class_option :region, :aliases => '-r', :default => "ap-northeast-1", :desc => "specify region. If you don't specify region, use 'ap-northeast-1'."
+    class_option :profile, :aliases => '-p', :default => "default",        :desc => "specify profile name. If you don't specify profile name, use default profile."
+    class_option :region,  :aliases => '-r', :default => "ap-northeast-1", :desc => "specify region. If you don't specify region, use 'ap-northeast-1'."
 
     no_commands do
       def elb_client
@@ -105,8 +104,8 @@ module Amenomi
         lb_tables
       end
 
-      def display_table(tables_array, headings)
-        tables = Terminal::Table.new :headings => headings, :rows => tables_array
+      def display_table(tables_array)
+        tables = Terminal::Table.new :headings => TABLE_HEADINGS, :rows => tables_array
         puts tables
       end
     end
@@ -119,13 +118,13 @@ module Amenomi
         case options[:type]
         when 'clb'
           lb_tables = get_classic_lbs
-          display_table(lb_tables, CLB_HEADINGS)
+          display_table(lb_tables)
         when 'nlb'
           lb_tables = get_application_network_lbs("network")
-          display_table(lb_tables, ALB_NLB_HEADINGS)
+          display_table(lb_tables)
         when 'alb'
           lb_tables = get_application_network_lbs("application")
-          display_table(lb_tables, ALB_NLB_HEADINGS)
+          display_table(lb_tables)
         when 'all'
           lb_tables = []
           classic_lbs = get_classic_lbs
@@ -144,7 +143,7 @@ module Amenomi
             lb_tables << :separator
           end
           lb_tables.pop
-          display_table(lb_tables, CLB_HEADINGS)
+          display_table(lb_tables)
         end
       rescue => e
         $stderr.puts("[ERROR] #{e.message}")
