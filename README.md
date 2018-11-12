@@ -41,6 +41,7 @@ Options:
 ```
 
 ```
+$ bundle exec amenomi help elb
 Commands:
   amenomi elb help [COMMAND]    # Describe subcommands or one specific subcommand
   amenomi elb list --type=TYPE  # list ELBs(CLB/NLB/ALB)
